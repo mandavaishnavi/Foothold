@@ -108,7 +108,7 @@ h2{font:700 15px/1.2 var(--body);letter-spacing:.04em;text-transform:uppercase;c
 .reasons .btn{text-align:left;font-weight:400}
 .inline{display:flex;gap:8px}
 .inline input{flex:1;min-width:0}
-input[type=text],textarea,input[type=time],select{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:11px 12px;min-height:46px}
+input[type=text],textarea,input[type=time],input[type=date],select{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:11px 12px;min-height:46px}
 textarea{width:100%;resize:vertical;min-height:76px;display:block}
 .guess{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:15px;color:var(--muted)}
 .chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:15px;min-height:36px}
@@ -126,6 +126,19 @@ details.all li.c{font-weight:700}
 .row-m{font-size:14px;color:var(--muted)}
 .row-acts{display:flex;align-items:center;gap:4px;flex:none}
 button.row{width:100%;text-align:left;padding:12px 14px}
+.row-open{border:0;background:none;text-align:left;padding:0}
+.row.hot{border-left:4px solid var(--time)}
+.row.editing{display:block;padding:14px}
+.ed{display:grid;gap:12px}
+.ed label{display:grid;gap:4px;font-size:14px;color:var(--muted)}
+.ed input[type=text],.ed input[type=date],.ed select{width:100%;font-size:17px;color:var(--ink)}
+.ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ed-h{font-size:14px;color:var(--muted)}
+.ed-steps{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.ed-steps li{display:flex;align-items:center;gap:2px}
+.ed-steps input{flex:1;min-width:0}
+.ed-steps li.d input{text-decoration:line-through;color:var(--muted)}
+.ed-steps .icon{flex:none;width:34px;font-size:18px}
 @media (max-width:400px){.row{flex-wrap:wrap}.row-main{flex-basis:100%}.row-acts{margin-left:auto}}
 
 /* Done */
@@ -192,12 +205,33 @@ function load(){
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var S=load()||seed();
 S.sessions=S.sessions||[]; S.log=S.log||[]; S.history=S.history||[];
-var ui={tab:'now',panel:null,stuck:null,prompt:'',reason:'',flash:'',undo:null,skip:[],stepsOpen:false,focus:null,resetArmed:false,backup:''};
+var ui={edit:null,tab:'now',panel:null,stuck:null,prompt:'',reason:'',flash:'',undo:null,skip:[],stepsOpen:false,focus:null,resetArmed:false,backup:''};
 
 /* ---------- helpers ---------- */
 function task(id){for(var i=0;i<S.tasks.length;i++) if(S.tasks[i].id===id) return S.tasks[i]; return null}
 function cur(){return S.currentId?task(S.currentId):null}
-function open(b){return S.tasks.filter(function(t){return !t.doneAt&&t.bucket===b})}
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function today(){return ymd(new Date())}
+function pd(s){var p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2])}
+function dayLabel(s){
+  var n=Math.round((pd(s)-pd(today()))/86400000);
+  if(n===0) return 'today'; if(n===1) return 'tomorrow';
+  return pd(s).toLocaleDateString([], {weekday:'short',day:'numeric',month:'short'});
+}
+function dueLabel(s){
+  var n=Math.round((pd(s)-pd(today()))/86400000);
+  if(n<0) return 'overdue by '+(-n)+(n===-1?' day':' days');
+  return 'due '+dayLabel(s);
+}
+var REP={daily:'daily',weekdays:'on weekdays',weekly:'weekly'};
+function nextDate(rep){
+  var d=new Date(); d.setHours(12,0,0,0);
+  if(rep==='weekly') d.setDate(d.getDate()+7);
+  else{ d.setDate(d.getDate()+1); if(rep==='weekdays') while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); }
+  return ymd(d);
+}
+function sleeping(t){return !t.doneAt&&!!t.wake&&t.wake>today()}
+function open(b){return S.tasks.filter(function(t){return !t.doneAt&&t.bucket===b&&!sleeping(t)})}
 function nextStep(t){for(var i=0;i<t.steps.length;i++) if(!t.steps[i].done) return t.steps[i]; return null}
 function started(t){return t.spent>0||!!t.note||t.steps.some(function(s){return s.done})}
 function dur(m){m=Math.round(m); if(m<60) return m+' min'; var h=Math.floor(m/60),r=m%60; return r?h+' h '+r+' m':h+' h'}
@@ -206,6 +240,8 @@ function tm12(d){return new Date(d).toLocaleTimeString([], {hour:'numeric',minut
 function startOfDay(){var d=new Date(); d.setHours(0,0,0,0); return d.getTime()}
 function meta(t){
   var p=[]; var n=t.steps.length, d=t.steps.filter(function(s){return s.done}).length;
+  if(t.due) p.push(dueLabel(t.due));
+  if(t.repeat) p.push('repeats '+REP[t.repeat]);
   if(n) p.push(d+' of '+n+' steps');
   if(t.est!=null) p.push('guess '+dur(t.est));
   if(t.spent>=60) p.push(dur(t.spent/60)+' tracked');
@@ -304,7 +340,11 @@ function pickForMe(exclude,mode){
   var c=open('today').filter(keep); if(!c.length) c=open('later').filter(keep);
   if(!c.length) return null;
   var est=function(x){return x.est==null?9999:x.est}, t=null, why='';
-  if(mode!=='small'){t=c.filter(started)[0]||null; if(t) why='you already started it';}
+  if(mode!=='small'){
+    var due=c.filter(function(x){return x.due&&x.due<=today()}).sort(function(a,b){return a.due<b.due?-1:1})[0];
+    if(due){t=due; why=due.due<today()?'it is overdue':'it is due today';}
+    else{t=c.filter(started)[0]||null; if(t) why='you already started it';}
+  }
   if(!t){t=c.slice().sort(function(a,b){return est(a)-est(b)})[0]; why=t.est!=null?'it has the shortest guess on your list':'it is first on your list';}
   return {t:t,why:why};
 }
@@ -319,7 +359,16 @@ function finish(t){
     S.history.push({title:t.title,est:t.est,actual:actual,at:Date.now()});
     msg+=' You guessed '+dur(t.est)+' and tracked '+dur(actual)+'.';
   }
+  if(t.repeat){
+    var nx=nextDate(t.repeat);
+    t.steps.forEach(function(s){s.done=false}); t.spent=0; t.note=''; t.doneAt=null; t.wake=nx; if(t.due) t.due=nx;
+    msg+=' It comes back '+dayLabel(nx)+'.';
+  }
   S.currentId=null; ui.reason=''; ui.panel=null; ui.skip=[]; ui.flash=msg;
+}
+function moveIn(arr,i,dir,ok){
+  var j=i+dir; while(j>=0&&j<arr.length&&!ok(arr[j])) j+=dir;
+  if(j<0||j>=arr.length) return; var x=arr[i]; arr[i]=arr[j]; arr[j]=x;
 }
 function openShrink(prompt){ui.panel='shrink'; ui.prompt=prompt; ui.focus='#in-shrink';}
 
@@ -345,7 +394,15 @@ var acts={
     if(!p){ui.flash='That is the only open task.'; return;}
     ui.skip.push(p.t.id); setCurrent(p.t.id,p.why);
   },
-  pick:function(d){ui.skip=[]; setCurrent(d.id,''); location.hash='now'; ui.tab='now';},
+  pick:function(d){ui.skip=[]; ui.edit=null; setCurrent(d.id,''); location.hash='now'; ui.tab='now';},
+  edit:function(d){ui.edit=d.id||S.currentId; if(ui.tab!=='list'){location.hash='list'; ui.tab='list';}},
+  edClose:function(){ui.edit=null},
+  wake:function(d){var t=task(d.id); if(t) t.wake=null},
+  taskUp:function(){var t=task(ui.edit); if(t) moveIn(S.tasks,S.tasks.indexOf(t),-1,function(x){return !x.doneAt&&x.bucket===t.bucket&&!sleeping(x)})},
+  taskDown:function(){var t=task(ui.edit); if(t) moveIn(S.tasks,S.tasks.indexOf(t),1,function(x){return !x.doneAt&&x.bucket===t.bucket&&!sleeping(x)})},
+  stepUp:function(d){var t=task(ui.edit); if(!t) return; var i=t.steps.findIndex(function(s){return s.id===d.sid}); if(i>=0) moveIn(t.steps,i,-1,function(){return true})},
+  stepDown:function(d){var t=task(ui.edit); if(!t) return; var i=t.steps.findIndex(function(s){return s.id===d.sid}); if(i>=0) moveIn(t.steps,i,1,function(){return true})},
+  stepDel:function(d){var t=task(ui.edit); if(t) t.steps=t.steps.filter(function(s){return s.id!==d.sid})},
   start:function(d){startTimer(+d.m,d.s==='1')},
   stop:function(){stopTimer()},
   stepDone:function(){
@@ -373,7 +430,7 @@ var acts={
   del:function(d){
     var i=S.tasks.findIndex(function(t){return t.id===d.id}); if(i<0) return;
     if(S.timer&&S.timer.taskId===d.id) stopTimer();
-    ui.undo={task:S.tasks[i],idx:i,wasCurrent:S.currentId===d.id};
+    ui.edit=null; ui.undo={task:S.tasks[i],idx:i,wasCurrent:S.currentId===d.id};
     S.tasks.splice(i,1); if(S.currentId===d.id) S.currentId=null;
     ui.flash='Deleted: '+ui.undo.task.title;
   },
@@ -400,6 +457,7 @@ var acts={
 };
 var forms={
   dump:function(v){if(!v) return; var n=addTasks(v); ui.flash=n+(n===1?' thing':' things')+' added to Later.'; ui.focus='#in-dump';},
+  edAdd:function(v){var t=task(ui.edit); if(!v||!t) return; t.steps.push({id:uid(),text:v,done:false}); ui.focus='#ed-add';},
   firstStep:function(v){var t=cur(); if(!v||!t) return; t.steps.push({id:uid(),text:v,done:false});},
   addStep:function(v){var t=cur(); if(!v||!t) return; t.steps.push({id:uid(),text:v,done:false}); ui.stepsOpen=true; ui.focus='#in-add';},
   shrink:function(v){
@@ -458,7 +516,7 @@ function panelHtml(t){
 }
 function vNow(){
   var h=flashHtml();
-  if(!S.tasks.some(function(t){return !t.doneAt}))
+  if(!open('today').length&&!open('later').length&&!cur())
     return h+'<section><h1 class="step">Nothing on your list.</h1><p class="lede">Write down whatever is taking up space in your head. Sorting comes later.</p>'+dumpForm()+'</section>';
   var t=cur();
   if(!t){
@@ -503,7 +561,7 @@ function vNow(){
         '<div class="commit"><span>Or commit to</span><button class="chip" data-a="start" data-m="10">10 min</button><button class="chip" data-a="start" data-m="25">25 min</button><button class="chip" data-a="start" data-m="45">45 min</button></div>'+
         '<div class="actions"><button class="btn" data-a="stepDone">Step done</button></div>';
     }
-    h+='<div class="links"><button class="link" data-a="shrink">Make it smaller</button><button class="link" data-a="stuck">I\'m stuck</button><button class="link" data-a="park">Not now</button></div>';
+    h+='<div class="links"><button class="link" data-a="shrink">Make it smaller</button><button class="link" data-a="stuck">I\'m stuck</button><button class="link" data-a="park">Not now</button><button class="link" data-a="edit">Edit task</button></div>';
   }
   if(t.est==null) h+='<div class="guess"><span>Guess the whole task:</span>'+[[5,'5 min'],[15,'15 min'],[30,'30 min'],[60,'1 h'],[120,'2 h']].map(function(g){
       return '<button class="chip" data-a="guess" data-m="'+g[0]+'">'+g[1]+'</button>'}).join('')+'</div>';
@@ -513,21 +571,41 @@ function vNow(){
     '<form class="inline" data-f="addStep"><input id="in-add" type="text" autocomplete="off" placeholder="Add a later step" aria-label="Add a later step"><button class="btn">Add</button></form></details>';
   return h+'</section>';
 }
+function editHtml(t){
+  var steps=t.steps.map(function(x,i){
+    return '<li class="'+(x.done?'d':'')+'"><input type="text" id="ed-s-'+x.id+'" data-step="'+x.id+'" value="'+esc(x.text)+'" aria-label="Step '+(i+1)+'" autocomplete="off">'+
+      '<button class="icon" data-a="stepUp" data-sid="'+x.id+'" aria-label="Move step '+(i+1)+' up">↑</button>'+
+      '<button class="icon" data-a="stepDown" data-sid="'+x.id+'" aria-label="Move step '+(i+1)+' down">↓</button>'+
+      '<button class="icon" data-a="stepDel" data-sid="'+x.id+'" aria-label="Delete step '+(i+1)+'">×</button></li>'}).join('');
+  return '<li class="row editing"><div class="ed">'+
+    '<label for="ed-title">Task<input type="text" id="ed-title" data-ed="title" value="'+esc(t.title)+'" autocomplete="off"></label>'+
+    '<div class="ed-grid"><label for="ed-due">Due<input type="date" id="ed-due" data-ed="due" value="'+esc(t.due||'')+'"></label>'+
+    '<label for="ed-rep">Repeat<select id="ed-rep" data-ed="repeat">'+[['','Never'],['daily','Daily'],['weekdays','Weekdays'],['weekly','Weekly']].map(function(o){
+      return '<option value="'+o[0]+'"'+((t.repeat||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label></div>'+
+    '<p class="ed-h">Steps'+(t.steps.length?'':': none yet')+'</p>'+(steps?'<ol class="ed-steps">'+steps+'</ol>':'')+
+    '<form class="inline" data-f="edAdd"><input type="text" id="ed-add" placeholder="Add a step" aria-label="Add a step" autocomplete="off"><button class="btn sm">Add</button></form>'+
+    '<div class="actions"><button class="btn primary sm" data-a="edClose">Done editing</button><button class="btn sm" data-a="taskUp">Move up</button><button class="btn sm" data-a="taskDown">Move down</button>'+
+    '<button class="btn sm ghost" data-a="del" data-id="'+t.id+'">Delete task</button></div></div></li>';
+}
 function rowHtml(t){
-  var full=open('today').length>=TODAY_MAX;
-  return '<li class="row"><div class="row-main"><span class="row-t">'+esc(t.title)+(t.example?' <span class="pill">Example</span>':'')+'</span>'+
-    (meta(t)?'<span class="row-m">'+esc(meta(t))+'</span>':'')+'</div><div class="row-acts">'+
-    '<button class="btn sm" data-a="pick" data-id="'+t.id+'">Do now</button>'+
-    '<button class="btn sm ghost" data-a="move" data-id="'+t.id+'"'+(t.bucket==='later'&&full?' aria-disabled="true"':'')+'>'+(t.bucket==='today'?'Later':'Today')+'</button>'+
-    '<button class="icon" data-a="del" data-id="'+t.id+'" aria-label="Delete '+esc(t.title)+'">×</button></div></li>';
+  if(ui.edit===t.id) return editHtml(t);
+  var full=open('today').length>=TODAY_MAX, asleep=sleeping(t), hot=!asleep&&t.due&&t.due<=today();
+  var m=asleep?('returns '+dayLabel(t.wake)+' · repeats '+REP[t.repeat]):meta(t);
+  return '<li class="row'+(hot?' hot':'')+'"><button class="row-main row-open" data-a="edit" data-id="'+t.id+'" aria-label="Edit '+esc(t.title)+'"><span class="row-t">'+esc(t.title)+(t.example?' <span class="pill">Example</span>':'')+'</span>'+
+    (m?'<span class="row-m">'+esc(m)+'</span>':'')+'</button><div class="row-acts">'+
+    (asleep?'<button class="btn sm" data-a="wake" data-id="'+t.id+'">Bring back now</button>'
+      :'<button class="btn sm" data-a="pick" data-id="'+t.id+'">Do now</button>'+
+       '<button class="btn sm ghost" data-a="move" data-id="'+t.id+'"'+(t.bucket==='later'&&full?' aria-disabled="true"':'')+'>'+(t.bucket==='today'?'Later':'Today')+'</button>')+
+    '</div></li>';
 }
 function vList(){
-  var td=open('today'), lt=open('later');
-  return flashHtml()+'<section><h1 class="h">Get it out of your head</h1>'+dumpForm()+'</section>'+
+  var td=open('today'), lt=open('later'), zz=S.tasks.filter(sleeping);
+  return flashHtml()+'<section><h1 class="h">Get it out of your head</h1>'+dumpForm()+'<p class="hint">Tap a task to edit it, set a due date or make it repeat.</p></section>'+
     '<section><h2>Today <span class="count">'+td.length+' of '+TODAY_MAX+'</span></h2>'+
       (td.length?'<ul class="rows">'+td.map(rowHtml).join('')+'</ul>':'<p class="empty">Nothing chosen for today. Move up to '+TODAY_MAX+' things here.</p>')+'</section>'+
     '<section><h2>Later <span class="count">'+lt.length+'</span></h2>'+
-      (lt.length?'<ul class="rows">'+lt.map(rowHtml).join('')+'</ul>':'<p class="empty">Nothing waiting.</p>')+'</section>';
+      (lt.length?'<ul class="rows">'+lt.map(rowHtml).join('')+'</ul>':'<p class="empty">Nothing waiting.</p>')+'</section>'+
+    (zz.length?'<section><h2>Coming back <span class="count">'+zz.length+'</span></h2><ul class="rows">'+zz.map(rowHtml).join('')+'</ul></section>':'');
 }
 function vDone(){
   var sod=startOfDay();
@@ -598,7 +676,15 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Enter'&&!e.shiftKey&&e.target.dataset&&e.target.dataset.enter){e.preventDefault(); e.target.form.requestSubmit?e.target.form.requestSubmit():e.target.form.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));}
 });
 document.addEventListener('change',function(e){
-  var k=e.target.dataset&&e.target.dataset.set; if(!k) return;
+  var d=e.target.dataset||{}, et=ui.edit&&task(ui.edit), v=e.target.value;
+  if(d.ed&&et){
+    if(d.ed==='title'){if(v.trim()) et.title=v.trim();}
+    else if(d.ed==='due') et.due=v||null;
+    else if(d.ed==='repeat'){et.repeat=v||null; if(!et.repeat) et.wake=null;}
+    save(); return;
+  }
+  if(d.step&&et){var st=et.steps.filter(function(x){return x.id===d.step})[0]; if(st&&v.trim()) st.text=v.trim(); save(); return;}
+  var k=d.set; if(!k) return;
   S.settings[k]=e.target.type==='checkbox'?e.target.checked:(k==='check'?+e.target.value:(e.target.value||S.settings[k]));
   save(); paintDay();
 });

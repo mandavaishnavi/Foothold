@@ -1,5 +1,5 @@
 // Foothold service worker: network first, cached copy when offline.
-const CACHE = 'foothold-v1';
+const CACHE = 'foothold-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
