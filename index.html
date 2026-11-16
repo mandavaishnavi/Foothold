@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foothold</title>
+<meta name="description" content="One small step at a time: a starter timer, task shrinking and a visible clock.">
+<meta name="theme-color" content="#ECEFF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161B" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one phone-width column, one focal sentence per screen, fixed tabs at the bottom. */
+:root{
+  --bg:#ECEFF1; --surface:#FFFFFF; --ink:#16212B; --muted:#586673; --line:#D3DAE0;
+  --accent:#17604F; --on-accent:#FFFFFF; --soft:#DCEBE6; --time:#DD4428;
+  --display:"Bricolage Grotesque","Trebuchet MS","Segoe UI",sans-serif;
+  --body:"Atkinson Hyperlegible","Verdana","Segoe UI",system-ui,sans-serif;
+  --r:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161B; --surface:#1A222A; --ink:#E7ECF0; --muted:#93A0AC; --line:#2B3640;
+    --accent:#5CC9AC; --on-accent:#0C1F1A; --soft:#1D332E; --time:#F06A50;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161B; --surface:#1A222A; --ink:#E7ECF0; --muted:#93A0AC; --line:#2B3640;
+  --accent:#5CC9AC; --on-accent:#0C1F1A; --soft:#1D332E; --time:#F06A50;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.45 var(--body);-webkit-text-size-adjust:100%}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none !important}
+
+.app{height:100%;max-width:540px;margin:0 auto;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:12px 18px 10px;border-bottom:1px solid var(--line)}
+.brand{font:700 19px/1 var(--display);letter-spacing:-.01em}
+.hd-timer{margin-left:auto;border:0;border-radius:999px;background:var(--time);color:#fff;padding:5px 11px;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.day{margin-left:auto;display:flex;flex-direction:column;gap:5px;align-items:flex-end;min-width:0}
+.hd-timer:not([hidden]) + .day{margin-left:0}
+.day-label{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.daybar{display:block;width:132px;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.daybar i{display:block;height:100%;width:0;background:var(--ink);border-radius:3px}
+
+main{flex:1;overflow-y:auto;padding:20px 18px 28px;display:flex;flex-direction:column;gap:26px}
+section{display:flex;flex-direction:column;gap:12px}
+h1,h2,p{margin:0}
+h1,h2{text-wrap:balance}
+h2{font:700 15px/1.2 var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:flex;align-items:baseline;gap:8px}
+.count{font-weight:400;letter-spacing:0;text-transform:none}
+.h{font:700 24px/1.15 var(--display);letter-spacing:-.01em}
+.lede{color:var(--muted);max-width:42ch}
+.hint,.empty{font-size:15px;color:var(--muted)}
+
+/* Now */
+.focus{gap:14px}
+.eyebrow{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--muted);min-width:0}
+.eyebrow-t{overflow-wrap:anywhere}
+.pill{flex:none;font-size:12px;font-weight:700;letter-spacing:.03em;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.step{font:700 clamp(28px,8vw,36px)/1.1 var(--display);letter-spacing:-.02em;overflow-wrap:anywhere}
+.prog{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
+.dots{display:flex;gap:5px}
+.dots i{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--muted)}
+.dots i.d{background:var(--accent);border-color:var(--accent)}
+.dots i.c{border-color:var(--ink);border-width:2.5px}
+.why,.note{font-size:15px;color:var(--muted)}
+.note{background:var(--soft);color:var(--ink);border-radius:var(--r);padding:10px 12px}
+.flash{background:var(--soft);border-radius:var(--r);padding:10px 12px;font-size:15px;display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r);padding:11px 16px;font-weight:700;min-height:46px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.big{width:100%;padding:16px;font-size:19px}
+.btn.sm{min-height:38px;padding:6px 12px;font-size:15px}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:default}
+.commit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:15px;color:var(--muted)}
+.link{border:0;background:none;padding:6px 2px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;font-size:15px}
+.links{display:flex;flex-wrap:wrap;gap:4px 18px}
+.icon{border:0;background:none;width:38px;height:38px;border-radius:10px;color:var(--muted);font-size:22px;line-height:1}
+
+.timer{display:flex;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.disc{width:124px;height:124px;flex:none}
+.disc-face{fill:var(--bg);stroke:var(--line);stroke-width:1}
+.disc-wedge{fill:none;stroke:var(--time)}
+.disc-hub{fill:var(--ink)}
+.disc-tick{stroke:var(--muted);stroke-width:1.2}
+.readout{display:flex;flex-direction:column;gap:2px;min-width:0}
+.t-left{font:700 44px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.t-sub{font-size:15px;color:var(--muted)}
+.ended{font:700 21px/1.2 var(--display)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel label,.panel .q{font-weight:700}
+.reasons{display:grid;gap:8px}
+.reasons .btn{text-align:left;font-weight:400}
+.inline{display:flex;gap:8px}
+.inline input{flex:1;min-width:0}
+input[type=text],textarea,input[type=time],select{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:11px 12px;min-height:46px}
+textarea{width:100%;resize:vertical;min-height:76px;display:block}
+.guess{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:15px;color:var(--muted)}
+.chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:15px;min-height:36px}
+details.all{border-top:1px solid var(--line);padding-top:10px}
+details.all summary{cursor:pointer;font-size:15px;color:var(--muted);padding:4px 0}
+details.all ol{margin:8px 0 12px;padding-left:24px;display:grid;gap:4px}
+details.all li.d{color:var(--muted);text-decoration:line-through}
+details.all li.c{font-weight:700}
+
+/* List */
+.rows{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 8px 10px 14px;display:flex;align-items:center;gap:8px}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.row-t{overflow-wrap:anywhere}
+.row-m{font-size:14px;color:var(--muted)}
+.row-acts{display:flex;align-items:center;gap:4px;flex:none}
+button.row{width:100%;text-align:left;padding:12px 14px}
+@media (max-width:400px){.row{flex-wrap:wrap}.row-main{flex-basis:100%}.row-acts{margin-left:auto}}
+
+/* Done */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:start}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.stat b{display:block;font:700 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:14px;color:var(--muted)}
+.log{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.log li{display:flex;gap:10px;font-size:15px}
+.log time{flex:none;width:78px;white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
+.log .tk{font-weight:700}
+.ratio{font-variant-numeric:tabular-nums;font-weight:700}
+.set{display:grid;gap:12px}
+.set-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.set-row label{flex:1;min-width:150px}
+.check{display:flex;align-items:center;gap:10px}
+.check input{width:22px;height:22px;accent-color:var(--accent)}
+
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);background:var(--bg)}
+.tabs a{padding:13px 8px 14px;text-align:center;text-decoration:none;color:var(--muted);font-weight:700;border-top:3px solid transparent;margin-top:-1px}
+.tabs a[aria-current="page"]{color:var(--ink);border-top-color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.daybar i{transition:width .6s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">Foothold</div>
+    <button class="hd-timer" id="hd-timer" data-a="tab" data-tab="now" hidden></button>
+    <div class="day"><span class="day-label" id="day-label"></span><span class="daybar" aria-hidden="true"><i id="day-fill"></i></span></div>
+  </header>
+  <main id="view"></main>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#now" data-tab="now">Now</a>
+    <a href="#list" data-tab="list">List</a>
+    <a href="#done" data-tab="done">Done</a>
+  </nav>
+</div>
+<script>
+(function(){
+'use strict';
+var KEY='foothold.v1', CIRC=2*Math.PI*27, TODAY_MAX=3;
+var $=function(s){return document.querySelector(s)};
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-3)}
+function mk(title,bucket,est,steps,example){
+  return {id:uid(),title:title,bucket:bucket,est:est==null?null:est,spent:0,note:'',doneAt:null,createdAt:Date.now(),example:!!example,
+    steps:(steps||[]).map(function(t){return {id:uid(),text:t,done:false}})};
+}
+function seed(){
+  var a=mk('Do the laundry','today',15,['Put the clothes from the chair into the basket','Carry the basket to the machine','Start the wash','Set a reminder to hang it up'],true);
+  return {v:1,currentId:a.id,timer:null,log:[],history:[],sessions:[],
+    settings:{dayStart:'08:00',dayEnd:'00:00',check:10,sound:true},
+    tasks:[a,
+      mk('Reply to the email I keep avoiding','today',5,['Open it and read it once','Write two rough sentences','Send it'],true),
+      mk('Start the report','today',60,[],true),
+      mk('Return the library book','later',null,[],true),
+      mk('Clear out the backpack','later',null,[],true)]};
+}
+function load(){
+  try{var s=localStorage.getItem(KEY); if(s){var o=JSON.parse(s); if(o&&o.tasks&&o.settings) return o;}}catch(e){}
+  return null;
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var S=load()||seed();
+S.sessions=S.sessions||[]; S.log=S.log||[]; S.history=S.history||[];
+var ui={tab:'now',panel:null,stuck:null,prompt:'',reason:'',flash:'',undo:null,skip:[],stepsOpen:false,focus:null,resetArmed:false,backup:''};
+
+/* ---------- helpers ---------- */
+function task(id){for(var i=0;i<S.tasks.length;i++) if(S.tasks[i].id===id) return S.tasks[i]; return null}
+function cur(){return S.currentId?task(S.currentId):null}
+function open(b){return S.tasks.filter(function(t){return !t.doneAt&&t.bucket===b})}
+function nextStep(t){for(var i=0;i<t.steps.length;i++) if(!t.steps[i].done) return t.steps[i]; return null}
+function started(t){return t.spent>0||!!t.note||t.steps.some(function(s){return s.done})}
+function dur(m){m=Math.round(m); if(m<60) return m+' min'; var h=Math.floor(m/60),r=m%60; return r?h+' h '+r+' m':h+' h'}
+function clock(ms){var s=Math.ceil(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function tm12(d){return new Date(d).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
+function startOfDay(){var d=new Date(); d.setHours(0,0,0,0); return d.getTime()}
+function meta(t){
+  var p=[]; var n=t.steps.length, d=t.steps.filter(function(s){return s.done}).length;
+  if(n) p.push(d+' of '+n+' steps');
+  if(t.est!=null) p.push('guess '+dur(t.est));
+  if(t.spent>=60) p.push(dur(t.spent/60)+' tracked');
+  if(t.note) p.push('left off: '+t.note);
+  return p.join(' · ');
+}
+
+/* ---------- sound, alerts, screen ---------- */
+var ac=null, wl=null;
+function audio(){try{if(!ac){var C=window.AudioContext||window.webkitAudioContext; if(C) ac=new C();} if(ac&&ac.state==='suspended') ac.resume();}catch(e){}}
+function tone(f,at,len,vol){var o=ac.createOscillator(),g=ac.createGain(); o.type='sine'; o.frequency.value=f;
+  g.gain.setValueAtTime(0.0001,at); g.gain.linearRampToValueAtTime(vol,at+0.02); g.gain.exponentialRampToValueAtTime(0.0001,at+len);
+  o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at+len+0.05);}
+function beep(kind){
+  if(!S.settings.sound||!ac) return;
+  try{var n=ac.currentTime; if(kind==='end'){tone(660,n,.35,.25);tone(880,n+.3,.35,.25);tone(1100,n+.6,.7,.25);} else tone(520,n,.3,.12);}catch(e){}
+}
+function notify(title,body){
+  try{
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+    if(!('Notification' in window)||Notification.permission!=='granted'||!document.hidden) return;
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+      navigator.serviceWorker.ready.then(function(r){return r.showNotification(title,{body:body,icon:'icon-192.png',tag:'foothold'})}).catch(function(){});
+    } else new Notification(title,{body:body});
+  }catch(e){}
+}
+function lock(){try{if(navigator.wakeLock&&!wl) navigator.wakeLock.request('screen').then(function(l){wl=l; l.addEventListener('release',function(){wl=null})}).catch(function(){});}catch(e){}}
+function unlock(){try{if(wl){wl.release(); wl=null;}}catch(e){}}
+
+/* ---------- timer ---------- */
+function bank(secs,t){secs=Math.max(0,Math.round(secs)); if(!secs||!t) return; t.spent+=secs; S.sessions.push({at:Date.now(),secs:secs,taskId:t.id});}
+function startTimer(mins,starter){
+  var t=cur(); if(!t) return;
+  stopTimer();
+  var now=Date.now();
+  S.timer={taskId:t.id,startAt:now,endAt:now+mins*60000,mins:mins,starter:!!starter,lastCheck:0};
+  ui.panel=null; ui.stuck=null; audio(); lock(); save(); render();
+}
+function stopTimer(){
+  var tm=S.timer; if(!tm) return;
+  if(!tm.ended) bank((Math.min(Date.now(),tm.endAt)-tm.startAt)/1000,task(tm.taskId));
+  S.timer=null; unlock();
+}
+function endTimer(){
+  var tm=S.timer, t=task(tm.taskId);
+  bank((tm.endAt-tm.startAt)/1000,t);
+  S.timer={taskId:tm.taskId,ended:true,mins:tm.mins,starter:tm.starter};
+  unlock(); beep('end');
+  notify(tm.starter?'2 minutes done':dur(tm.mins)+' done', t?t.title:'');
+  save(); render();
+}
+function paintTimer(){
+  var tm=S.timer, hd=$('#hd-timer');
+  if(!tm||tm.ended){hd.hidden=true; return;}
+  var left=Math.max(0,tm.endAt-Date.now()), txt=clock(left);
+  hd.hidden=(ui.tab==='now'); hd.textContent=txt+' left';
+  var el=$('#t-left');
+  if(el){el.textContent=txt; $('#t-wedge').setAttribute('stroke-dasharray',(Math.min(1,left/3600000)*CIRC).toFixed(2)+' '+CIRC.toFixed(2));}
+}
+function mins(s){var p=String(s||'0:0').split(':'); return (+p[0])*60+(+p[1]||0)}
+function paintDay(){
+  var d=new Date(), n=d.getHours()*60+d.getMinutes(), s=mins(S.settings.dayStart), e=mins(S.settings.dayEnd), label, frac;
+  if(e<=s) e+=1440;
+  if(n<s&&n+1440<e) n+=1440;
+  if(n<s){label='day starts '+tm12(new Date().setHours(Math.floor(s/60),s%60)); frac=0;}
+  else if(n>=e){label='past your day end'; frac=1;}
+  else{label=dur(e-n)+' left today'; frac=(n-s)/(e-s);}
+  $('#day-label').textContent=tm12(d)+' · '+label;
+  $('#day-fill').style.width=(frac*100).toFixed(1)+'%';
+}
+function tick(){
+  paintDay();
+  var tm=S.timer;
+  if(tm&&!tm.ended){
+    var now=Date.now();
+    if(now>=tm.endAt){endTimer(); return;}
+    var em=Math.floor((now-tm.startAt)/60000), ck=+S.settings.check;
+    if(ck>0&&em>0&&em%ck===0&&tm.lastCheck!==em){tm.lastCheck=em; beep('check');}
+  }
+  paintTimer();
+}
+
+/* ---------- task actions ---------- */
+function addTasks(text){
+  var lines=String(text).split(/\n+/).map(function(x){return x.replace(/^\s*[-*•\d.)]*\s*/,'').trim()}).filter(Boolean);
+  lines.forEach(function(l){S.tasks.push(mk(l,'later'))});
+  return lines.length;
+}
+function setCurrent(id,why){
+  if(S.timer&&S.timer.taskId!==id) stopTimer();
+  S.currentId=id; ui.reason=why||''; ui.panel=null; ui.stuck=null; ui.stepsOpen=false;
+}
+function pickForMe(exclude,mode){
+  var skip=exclude||[];
+  var keep=function(t){return skip.indexOf(t.id)<0};
+  var c=open('today').filter(keep); if(!c.length) c=open('later').filter(keep);
+  if(!c.length) return null;
+  var est=function(x){return x.est==null?9999:x.est}, t=null, why='';
+  if(mode!=='small'){t=c.filter(started)[0]||null; if(t) why='you already started it';}
+  if(!t){t=c.slice().sort(function(a,b){return est(a)-est(b)})[0]; why=t.est!=null?'it has the shortest guess on your list':'it is first on your list';}
+  return {t:t,why:why};
+}
+function logIt(kind,text,title){S.log.push({at:Date.now(),kind:kind,text:text,task:title}); if(S.log.length>400) S.log=S.log.slice(-400);}
+function finish(t){
+  stopTimer();
+  t.steps.forEach(function(s){s.done=true});
+  t.doneAt=Date.now(); logIt('task',t.title,t.title);
+  var msg='Finished: '+t.title+'.';
+  if(t.est!=null&&t.spent>=60){
+    var actual=Math.max(1,Math.round(t.spent/60));
+    S.history.push({title:t.title,est:t.est,actual:actual,at:Date.now()});
+    msg+=' You guessed '+dur(t.est)+' and tracked '+dur(actual)+'.';
+  }
+  S.currentId=null; ui.reason=''; ui.panel=null; ui.skip=[]; ui.flash=msg;
+}
+function openShrink(prompt){ui.panel='shrink'; ui.prompt=prompt; ui.focus='#in-shrink';}
+
+var STUCK={
+  start:{q:"I don't know where to start", go:function(){openShrink('What would your hands do first? Name something physical.')}},
+  big:{q:'It feels too big', go:function(){openShrink('Cut off a piece you could finish in 2 minutes. What is it?')}},
+  need:{q:'I need something else first', go:function(){openShrink('What has to happen first?')}},
+  dread:{q:"I'm dreading it", tip:'Do it badly on purpose for 2 minutes. A bad version counts, and you can stop when the timer ends.', btn:'Start 2 minutes', act:function(){startTimer(2,true)}},
+  boring:{q:"It's boring", tip:'Race it. Guess how fast you can finish this step, then try to beat a 10 minute clock.', btn:'Start 10 minutes', act:function(){startTimer(10)}},
+  tired:{q:'I have no energy for this', tip:'Park it. Take the smallest thing on your list, or stop for now.', btn:'Give me something small', act:function(){
+    var id=S.currentId, p=pickForMe([id],'small');
+    if(!p){ui.flash='Nothing smaller on the list. Stopping is allowed.'; ui.panel=null; ui.stuck=null; return;}
+    setCurrent(p.t.id,'it is the smallest thing on your list');
+  }}
+};
+
+var acts={
+  tab:function(d){location.hash=d.tab},
+  pickForMe:function(){var p=pickForMe([]); if(p){ui.skip=[p.t.id]; setCurrent(p.t.id,p.why);}},
+  pickAnother:function(){
+    var p=pickForMe(ui.skip);
+    if(!p){ui.skip=[S.currentId]; p=pickForMe(ui.skip);}
+    if(!p){ui.flash='That is the only open task.'; return;}
+    ui.skip.push(p.t.id); setCurrent(p.t.id,p.why);
+  },
+  pick:function(d){ui.skip=[]; setCurrent(d.id,''); location.hash='now'; ui.tab='now';},
+  start:function(d){startTimer(+d.m,d.s==='1')},
+  stop:function(){stopTimer()},
+  stepDone:function(){
+    var t=cur(), s=t&&nextStep(t); if(!s) return;
+    s.done=true; t.note=''; logIt('step',s.text,t.title); ui.panel=null; ui.stuck=null;
+    if(S.timer&&S.timer.ended&&nextStep(t)) S.timer=null;
+  },
+  oneStep:function(){var t=cur(); if(t) t.steps.push({id:uid(),text:t.title,done:false})},
+  finish:function(){var t=cur(); if(t) finish(t)},
+  shrink:function(){openShrink('What is a smaller first piece of this?')},
+  stuck:function(){ui.panel='stuck'; ui.stuck=null},
+  reason:function(d){var r=STUCK[d.k]; if(r.go) r.go(); else ui.stuck=d.k},
+  tactic:function(){var r=STUCK[ui.stuck]; if(r&&r.act) r.act()},
+  park:function(){ui.panel='park'; ui.focus='#in-park'},
+  closePanel:function(){ui.panel=null; ui.stuck=null},
+  guess:function(d){var t=cur(); if(t) t.est=+d.m},
+  reguess:function(){var t=cur(); if(t) t.est=null},
+  move:function(d){
+    var t=task(d.id); if(!t) return;
+    if(t.bucket==='later'){
+      if(open('today').length>=TODAY_MAX){ui.flash='Today holds '+TODAY_MAX+' tasks. Move one to Later first.'; return;}
+      t.bucket='today';
+    } else t.bucket='later';
+  },
+  del:function(d){
+    var i=S.tasks.findIndex(function(t){return t.id===d.id}); if(i<0) return;
+    if(S.timer&&S.timer.taskId===d.id) stopTimer();
+    ui.undo={task:S.tasks[i],idx:i,wasCurrent:S.currentId===d.id};
+    S.tasks.splice(i,1); if(S.currentId===d.id) S.currentId=null;
+    ui.flash='Deleted: '+ui.undo.task.title;
+  },
+  undo:function(){var u=ui.undo; if(!u) return; S.tasks.splice(u.idx,0,u.task); if(u.wasCurrent) S.currentId=u.task.id; ui.undo=null;},
+  clearExamples:function(){
+    var c=cur(); if(c&&c.example){stopTimer(); S.currentId=null;}
+    S.tasks=S.tasks.filter(function(t){return !t.example}); ui.flash='Examples cleared.';
+  },
+  alerts:function(){
+    try{
+      if(!('Notification' in window)){ui.flash='This browser has no notifications here.'; return;}
+      var p=Notification.requestPermission(function(){render()});
+      if(p&&p.then) p.then(function(){render()}).catch(function(){});
+    }catch(e){ui.flash='Notifications are not available here.';}
+  },
+  copyBackup:function(){
+    var txt=JSON.stringify(S); ui.backup=txt;
+    try{navigator.clipboard.writeText(txt).then(function(){ui.flash='Backup copied. Paste it somewhere safe.'; render()}).catch(function(){});}catch(e){}
+  },
+  reset:function(){
+    if(!ui.resetArmed){ui.resetArmed=true; return;}
+    stopTimer(); S=seed(); ui.resetArmed=false; ui.flash='Everything erased. Examples are back.';
+  }
+};
+var forms={
+  dump:function(v){if(!v) return; var n=addTasks(v); ui.flash=n+(n===1?' thing':' things')+' added to Later.'; ui.focus='#in-dump';},
+  firstStep:function(v){var t=cur(); if(!v||!t) return; t.steps.push({id:uid(),text:v,done:false});},
+  addStep:function(v){var t=cur(); if(!v||!t) return; t.steps.push({id:uid(),text:v,done:false}); ui.stepsOpen=true; ui.focus='#in-add';},
+  shrink:function(v){
+    var t=cur(); if(!v||!t) return;
+    var s=nextStep(t), i=s?t.steps.indexOf(s):t.steps.length;
+    t.steps.splice(i,0,{id:uid(),text:v,done:false}); ui.panel=null; ui.stuck=null;
+  },
+  park:function(v){
+    var t=cur(); if(!t) return;
+    stopTimer(); t.note=v; S.currentId=null; ui.reason=''; ui.panel=null; ui.skip=[t.id];
+    ui.flash='Parked: '+t.title+'. It will be here when you come back.';
+  },
+  restore:function(v){
+    try{var o=JSON.parse(v); if(!o||!o.tasks||!o.settings) throw 0; stopTimer(); S=o; S.timer=null; S.sessions=S.sessions||[]; ui.flash='Backup restored.';}
+    catch(e){ui.flash='That text is not a Foothold backup. Paste the whole thing you copied.';}
+  }
+};
+
+/* ---------- views ---------- */
+function flashHtml(){
+  if(!ui.flash) return '';
+  return '<p class="flash" role="status"><span>'+esc(ui.flash)+'</span>'+(ui.undo?'<button class="link" data-a="undo">Undo</button>':'')+'</p>';
+}
+function dumpForm(){
+  return '<form data-f="dump"><label class="hint" for="in-dump">One thing per line. New things land in Later.</label>'+
+    '<textarea id="in-dump" data-enter="1" rows="2" placeholder="Call the bank&#10;Fix the bike tyre" autocomplete="off"></textarea>'+
+    '<div class="actions"><button class="btn primary">Add</button></div></form>';
+}
+function discHtml(tm){
+  var left=Math.max(0,tm.endAt-Date.now()), ticks='';
+  for(var i=0;i<12;i++){var a=i*Math.PI/6, x=Math.sin(a), y=-Math.cos(a);
+    ticks+='<line class="disc-tick" x1="'+(60+x*55).toFixed(1)+'" y1="'+(60+y*55).toFixed(1)+'" x2="'+(60+x*59).toFixed(1)+'" y2="'+(60+y*59).toFixed(1)+'"/>';}
+  return '<div class="timer"><svg class="disc" viewBox="0 0 120 120" role="img" aria-label="Time left, shown on a 60 minute dial">'+
+    '<circle class="disc-face" cx="60" cy="60" r="54"/>'+
+    '<circle class="disc-wedge" id="t-wedge" cx="60" cy="60" r="27" stroke-width="54" transform="rotate(-90 60 60)" stroke-dasharray="'+(Math.min(1,left/3600000)*CIRC).toFixed(2)+' '+CIRC.toFixed(2)+'"/>'+
+    ticks+'<circle class="disc-hub" cx="60" cy="60" r="3.5"/></svg>'+
+    '<div class="readout"><span class="t-left" id="t-left">'+clock(left)+'</span><span class="t-sub">left · ends '+tm12(tm.endAt)+'</span>'+
+    '<span class="t-sub">'+(tm.starter?'You can stop when it ends.':'Full dial is 60 minutes.')+'</span></div></div>';
+}
+function panelHtml(t){
+  if(ui.panel==='shrink') return '<form class="panel" data-f="shrink"><label for="in-shrink">'+esc(ui.prompt)+'</label>'+
+    '<input id="in-shrink" type="text" autocomplete="off" placeholder="A smaller step">'+
+    '<div class="actions"><button class="btn primary">Do this first</button><button type="button" class="link" data-a="closePanel">Cancel</button></div></form>';
+  if(ui.panel==='park') return '<form class="panel" data-f="park"><label for="in-park">Where are you leaving off? (optional)</label>'+
+    '<input id="in-park" type="text" autocomplete="off" placeholder="A note for when you come back">'+
+    '<div class="actions"><button class="btn primary">Park it</button><button type="button" class="link" data-a="closePanel">Cancel</button></div></form>';
+  if(ui.panel==='stuck'){
+    if(ui.stuck){var r=STUCK[ui.stuck];
+      return '<div class="panel"><p class="q">'+esc(r.q)+'</p><p>'+esc(r.tip)+'</p>'+
+        '<div class="actions"><button class="btn primary" data-a="tactic">'+esc(r.btn)+'</button><button class="link" data-a="stuck">Back</button></div></div>';}
+    return '<div class="panel"><p class="q">What is in the way?</p><div class="reasons">'+
+      Object.keys(STUCK).map(function(k){return '<button class="btn" data-a="reason" data-k="'+k+'">'+esc(STUCK[k].q)+'</button>'}).join('')+
+      '</div><button class="link" data-a="closePanel">Never mind</button></div>';
+  }
+  return '';
+}
+function vNow(){
+  var h=flashHtml();
+  if(!S.tasks.some(function(t){return !t.doneAt}))
+    return h+'<section><h1 class="step">Nothing on your list.</h1><p class="lede">Write down whatever is taking up space in your head. Sorting comes later.</p>'+dumpForm()+'</section>';
+  var t=cur();
+  if(!t){
+    var list=open('today'), from='Today';
+    if(!list.length){list=open('later').slice(0,5); from='From Later, because Today is empty';}
+    return h+'<section><h1 class="step">What now?</h1><p class="lede">Choosing is work too. Let the app choose, or tap one yourself.</p>'+
+      '<button class="btn primary big" data-a="pickForMe">Pick for me</button></section>'+
+      '<section><h2>'+from+'</h2><ul class="rows">'+list.map(function(x){
+        return '<li><button class="row" data-a="pick" data-id="'+x.id+'"><span class="row-main"><span class="row-t">'+esc(x.title)+'</span>'+
+          (meta(x)?'<span class="row-m">'+esc(meta(x))+'</span>':'')+'</span></button></li>'}).join('')+'</ul></section>';
+  }
+  var st=nextStep(t), tm=(S.timer&&S.timer.taskId===t.id)?S.timer:null, n=t.steps.length, dn=t.steps.filter(function(s){return s.done}).length;
+  h+='<section class="focus"><p class="eyebrow"><span class="eyebrow-t">'+esc(t.title)+'</span>'+(t.example?'<span class="pill">Example</span>':'')+'</p>';
+  if(ui.reason) h+='<p class="why">Picked because '+esc(ui.reason)+'. <button class="link" data-a="pickAnother">Pick another</button></p>';
+  if(t.note) h+='<p class="note"><b>Where you left off:</b> '+esc(t.note)+'</p>';
+  if(!n){
+    h+='<h1 class="step">What would your hands do first?</h1><p class="lede">Name something physical and small, like opening the file or putting on shoes.</p>'+
+      '<form class="inline" data-f="firstStep"><input id="in-first" type="text" autocomplete="off" placeholder="First tiny step" aria-label="First tiny step"><button class="btn primary">Add</button></form>'+
+      '<div class="links"><button class="link" data-a="oneStep">It is one step. Just start.</button><button class="link" data-a="park">Not now</button></div>';
+    if(ui.panel==='park') h+=panelHtml(t);
+    return h+'</section>';
+  }
+  if(!st){
+    h+='<h1 class="step">All steps done. Is the whole task finished?</h1>'+
+      '<button class="btn primary big" data-a="finish">Yes, finished</button>'+
+      '<form class="inline" data-f="addStep"><input id="in-add" type="text" autocomplete="off" placeholder="Or add the next step" aria-label="Next step"><button class="btn">Add</button></form>'+
+      '<div class="links"><button class="link" data-a="park">Not now</button></div>';
+    if(ui.panel==='park') h+=panelHtml(t);
+    return h+'</section>';
+  }
+  var dots=''; for(var i=0;i<n;i++) dots+='<i class="'+(t.steps[i].done?'d':(t.steps[i]===st?'c':''))+'"></i>';
+  h+='<h1 class="step">'+esc(st.text)+'</h1><p class="prog"><span>Step '+(dn+1)+' of '+n+'</span><span class="dots" aria-hidden="true">'+dots+'</span></p>';
+  if(ui.panel) h+=panelHtml(t);
+  else{
+    if(tm&&!tm.ended){
+      h+=discHtml(tm)+'<div class="actions"><button class="btn primary" data-a="stepDone">Step done</button><button class="btn" data-a="stop">Stop timer</button></div>';
+    } else if(tm&&tm.ended){
+      h+='<p class="ended">'+(tm.starter?'2 minutes done. Starting was the hard part.':dur(tm.mins)+' done.')+'</p>'+
+        '<div class="actions"><button class="btn primary" data-a="start" data-m="10">Keep going 10 min</button><button class="btn" data-a="start" data-m="25">25 min</button><button class="btn" data-a="stepDone">Step done</button></div>';
+    } else {
+      h+='<button class="btn primary big" data-a="start" data-m="2" data-s="1">Start with 2 minutes</button>'+
+        '<div class="commit"><span>Or commit to</span><button class="chip" data-a="start" data-m="10">10 min</button><button class="chip" data-a="start" data-m="25">25 min</button><button class="chip" data-a="start" data-m="45">45 min</button></div>'+
+        '<div class="actions"><button class="btn" data-a="stepDone">Step done</button></div>';
+    }
+    h+='<div class="links"><button class="link" data-a="shrink">Make it smaller</button><button class="link" data-a="stuck">I\'m stuck</button><button class="link" data-a="park">Not now</button></div>';
+  }
+  if(t.est==null) h+='<div class="guess"><span>Guess the whole task:</span>'+[[5,'5 min'],[15,'15 min'],[30,'30 min'],[60,'1 h'],[120,'2 h']].map(function(g){
+      return '<button class="chip" data-a="guess" data-m="'+g[0]+'">'+g[1]+'</button>'}).join('')+'</div>';
+  else h+='<p class="guess"><span>Your guess: '+dur(t.est)+' · tracked so far: '+dur(t.spent/60)+'</span><button class="link" data-a="reguess">Change</button></p>';
+  h+='<details class="all"'+(ui.stepsOpen?' open':'')+'><summary>All steps ('+n+')</summary><ol>'+t.steps.map(function(s){
+      return '<li class="'+(s.done?'d':(s===st?'c':''))+'">'+esc(s.text)+'</li>'}).join('')+'</ol>'+
+    '<form class="inline" data-f="addStep"><input id="in-add" type="text" autocomplete="off" placeholder="Add a later step" aria-label="Add a later step"><button class="btn">Add</button></form></details>';
+  return h+'</section>';
+}
+function rowHtml(t){
+  var full=open('today').length>=TODAY_MAX;
+  return '<li class="row"><div class="row-main"><span class="row-t">'+esc(t.title)+(t.example?' <span class="pill">Example</span>':'')+'</span>'+
+    (meta(t)?'<span class="row-m">'+esc(meta(t))+'</span>':'')+'</div><div class="row-acts">'+
+    '<button class="btn sm" data-a="pick" data-id="'+t.id+'">Do now</button>'+
+    '<button class="btn sm ghost" data-a="move" data-id="'+t.id+'"'+(t.bucket==='later'&&full?' aria-disabled="true"':'')+'>'+(t.bucket==='today'?'Later':'Today')+'</button>'+
+    '<button class="icon" data-a="del" data-id="'+t.id+'" aria-label="Delete '+esc(t.title)+'">×</button></div></li>';
+}
+function vList(){
+  var td=open('today'), lt=open('later');
+  return flashHtml()+'<section><h1 class="h">Get it out of your head</h1>'+dumpForm()+'</section>'+
+    '<section><h2>Today <span class="count">'+td.length+' of '+TODAY_MAX+'</span></h2>'+
+      (td.length?'<ul class="rows">'+td.map(rowHtml).join('')+'</ul>':'<p class="empty">Nothing chosen for today. Move up to '+TODAY_MAX+' things here.</p>')+'</section>'+
+    '<section><h2>Later <span class="count">'+lt.length+'</span></h2>'+
+      (lt.length?'<ul class="rows">'+lt.map(rowHtml).join('')+'</ul>':'<p class="empty">Nothing waiting.</p>')+'</section>';
+}
+function vDone(){
+  var sod=startOfDay();
+  var log=S.log.filter(function(l){return l.at>=sod});
+  var steps=log.filter(function(l){return l.kind==='step'}).length, tasks=log.filter(function(l){return l.kind==='task'}).length;
+  var secs=S.sessions.filter(function(x){return x.at>=sod}).reduce(function(a,x){return a+x.secs},0);
+  var live=(S.timer&&!S.timer.ended)?(Date.now()-S.timer.startAt)/1000:0;
+  var h=flashHtml()+'<section><h1 class="h">Done today</h1><div class="stats">'+
+    '<div class="stat"><b>'+steps+'</b><span>'+(steps===1?'step':'steps')+'</span></div><div class="stat"><b>'+tasks+'</b><span>'+(tasks===1?'task':'tasks')+'</span></div>'+
+    '<div class="stat"><b>'+Math.round((secs+live)/60)+'</b><span>min timed</span></div></div>'+
+    (log.length?'<ul class="log">'+log.slice().reverse().map(function(l){
+      return '<li><time>'+tm12(l.at)+'</time><span'+(l.kind==='task'?' class="tk"':'')+'>'+(l.kind==='task'?'Finished: ':'')+esc(l.text)+'</span></li>'}).join('')+'</ul>'
+      :'<p class="empty">Nothing checked off yet today. One step counts.</p>')+'</section>';
+  var hs=S.history.slice(-6).reverse();
+  h+='<section><h2>Guess vs. tracked time</h2>';
+  if(!hs.length) h+='<p class="empty">Guess how long a task takes, run the timer while you do it, and finish it. Your real ratio shows up here.</p>';
+  else{
+    var e=0,a=0; S.history.forEach(function(x){e+=x.est; a+=x.actual});
+    var r=a/e;
+    h+='<p>Across '+S.history.length+(S.history.length===1?' task':' tasks')+', things took <span class="ratio">'+r.toFixed(1)+'×</span> your guess.'+
+      (S.history.length>=3&&r>1.15?' Multiply your next guess by '+r.toFixed(1)+'.':'')+'</p><ul class="log">'+
+      hs.map(function(x){return '<li><time>'+(x.actual/x.est).toFixed(1)+'×</time><span>'+esc(x.title)+': guessed '+dur(x.est)+', tracked '+dur(x.actual)+'</span></li>'}).join('')+'</ul>';
+  }
+  h+='</section>';
+  var perm=('Notification' in window)?Notification.permission:'none';
+  var hasEx=S.tasks.some(function(t){return t.example});
+  h+='<section><h2>Settings</h2><div class="set">'+
+    '<div class="set-row"><label for="set-start">My day starts at</label><input type="time" id="set-start" data-set="dayStart" value="'+esc(S.settings.dayStart)+'"></div>'+
+    '<div class="set-row"><label for="set-end">My day ends at</label><input type="time" id="set-end" data-set="dayEnd" value="'+esc(S.settings.dayEnd)+'"></div>'+
+    '<div class="set-row"><label for="set-check">Chime while a timer runs</label><select id="set-check" data-set="check">'+
+      [[0,'Off'],[5,'Every 5 min'],[10,'Every 10 min'],[15,'Every 15 min']].map(function(o){return '<option value="'+o[0]+'"'+(+S.settings.check===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></div>'+
+    '<label class="check" for="set-sound"><input type="checkbox" id="set-sound" data-set="sound"'+(S.settings.sound?' checked':'')+'>Sound</label>'+
+    '<div class="set-row"><span>Alert when a timer ends and the app is in the background</span>'+
+      (perm==='granted'?'<span class="hint">On</span>':perm==='denied'||perm==='none'?'<span class="hint">Blocked or unavailable in this browser</span>':'<button class="btn sm" data-a="alerts">Turn on</button>')+'</div>'+
+    '<div class="actions"><button class="btn sm" data-a="copyBackup">Copy a backup</button>'+(hasEx?'<button class="btn sm" data-a="clearExamples">Clear the examples</button>':'')+
+      '<button class="btn sm ghost" data-a="reset">'+(ui.resetArmed?'Tap again to erase everything':'Erase everything')+'</button></div>'+
+    (ui.backup?'<label class="hint" for="out-backup">If copying failed, select this text and copy it yourself.</label><textarea id="out-backup" readonly rows="3">'+esc(ui.backup)+'</textarea>':'')+
+    '<form data-f="restore"><label class="hint" for="in-restore">Restore: paste a backup here.</label><textarea id="in-restore" rows="2" autocomplete="off"></textarea>'+
+      '<div class="actions"><button class="btn sm">Restore</button></div></form>'+
+    '<p class="hint">Everything is stored in this browser on this device only.</p></div></section>';
+  return h;
+}
+function render(){
+  var v=$('#view');
+  v.innerHTML=ui.tab==='list'?vList():ui.tab==='done'?vDone():vNow();
+  ui.flash='';
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs a'),function(a){
+    if(a.dataset.tab===ui.tab) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');});
+  if(ui.focus){var f=$(ui.focus); if(f) try{f.focus({preventScroll:false})}catch(e){} ui.focus=null;}
+  paintDay(); paintTimer();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-a]'); if(!b) return;
+  var a=b.dataset.a; if(!acts[a]) return;
+  if(a!=='reset') ui.resetArmed=false;
+  if(a!=='undo'&&a!=='del') ui.undo=null;
+  audio();
+  acts[a](b.dataset); save(); render();
+});
+document.addEventListener('submit',function(e){
+  e.preventDefault();
+  var f=e.target, k=f.dataset.f, el=f.querySelector('input[type=text],textarea');
+  if(forms[k]){forms[k](el?el.value.trim():'',f); save(); render();}
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&!e.shiftKey&&e.target.dataset&&e.target.dataset.enter){e.preventDefault(); e.target.form.requestSubmit?e.target.form.requestSubmit():e.target.form.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));}
+});
+document.addEventListener('change',function(e){
+  var k=e.target.dataset&&e.target.dataset.set; if(!k) return;
+  S.settings[k]=e.target.type==='checkbox'?e.target.checked:(k==='check'?+e.target.value:(e.target.value||S.settings[k]));
+  save(); paintDay();
+});
+document.addEventListener('toggle',function(e){if(e.target.classList&&e.target.classList.contains('all')) ui.stepsOpen=e.target.open},true);
+document.addEventListener('visibilitychange',function(){if(!document.hidden){if(S.timer&&!S.timer.ended) lock(); tick();}});
+function route(){var h=(location.hash||'').slice(1); ui.tab=(h==='list'||h==='done')?h:'now'; ui.panel=null; ui.stuck=null; render();}
+window.addEventListener('hashchange',route);
+
+if(S.currentId&&!cur()) S.currentId=null;
+if(S.timer&&!S.timer.ended&&Date.now()>=S.timer.endAt){var _t=S.timer; bank((_t.endAt-_t.startAt)/1000,task(_t.taskId)); S.timer={taskId:_t.taskId,ended:true,mins:_t.mins,starter:_t.starter}; save();}
+route();
+setInterval(tick,1000);
+try{if('serviceWorker' in navigator&&location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}
+})();
+</script>
+</body>
+</html>
